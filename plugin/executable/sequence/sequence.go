@@ -20,11 +20,16 @@
 package sequence
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"sort"
+
 	"github.com/IrineSistiana/mosdns/v4/coremain"
 	"github.com/IrineSistiana/mosdns/v4/pkg/executable_seq"
 	"github.com/IrineSistiana/mosdns/v4/pkg/query_context"
+	"github.com/miekg/dns"
 )
 
 const PluginType = "sequence"
@@ -67,6 +72,16 @@ func (s *sequence) Exec(ctx context.Context, qCtx *query_context.Context, next e
 		return err
 	}
 
+	a := qCtx.R().Answer
+	if len(a) > 0 {
+		switch a[0].Header().Rrtype {
+		case dns.TypeCNAME:
+			updateCNAME(a)
+		case dns.TypeA, dns.TypeAAAA:
+			updateIPRecords(a)
+		}
+	}
+
 	return executable_seq.ExecChainNode(ctx, qCtx, next)
 }
 
@@ -78,4 +93,64 @@ type _return struct {
 
 func (n *_return) Exec(_ context.Context, _ *query_context.Context, _ executable_seq.ExecutableChainNode) error {
 	return nil
+}
+
+// Function to update DNS records of type CNAME
+func updateCNAME(a []dns.RR) {
+	cnameLength := 0
+	var newIPs []net.IP
+
+	for _, v := range a {
+		if v.Header().Rrtype == dns.TypeCNAME {
+			cnameLength++
+			continue
+		}
+		if v.Header().Rrtype == dns.TypeA {
+			newIPs = append(newIPs, v.(*dns.A).A)
+		} else if v.Header().Rrtype == dns.TypeAAAA {
+			newIPs = append(newIPs, v.(*dns.AAAA).AAAA)
+		}
+	}
+
+	sort.Slice(newIPs, func(i, j int) bool {
+		return bytes.Compare(newIPs[i], newIPs[j]) < 0
+	})
+
+	// Update DNS
+	for i := 0; i < len(newIPs); i++ {
+		indexA := i + cnameLength
+		switch a[indexA].Header().Rrtype {
+		case dns.TypeA:
+			a[indexA].(*dns.A).A = newIPs[i]
+		case dns.TypeAAAA:
+			a[indexA].(*dns.AAAA).AAAA = newIPs[i]
+		}
+	}
+}
+
+// Function to update DNS records of type A and AAAA
+func updateIPRecords(a []dns.RR) {
+	var newIPs []net.IP
+
+	for _, v := range a {
+		if v.Header().Rrtype == dns.TypeA {
+			newIPs = append(newIPs, v.(*dns.A).A)
+		} else if v.Header().Rrtype == dns.TypeAAAA {
+			newIPs = append(newIPs, v.(*dns.AAAA).AAAA)
+		}
+	}
+
+	sort.Slice(newIPs, func(i, j int) bool {
+		return bytes.Compare(newIPs[i], newIPs[j]) < 0
+	})
+
+	// Update DNS
+	for i := 0; i < len(a); i++ {
+		switch a[i].Header().Rrtype {
+		case dns.TypeA:
+			a[i].(*dns.A).A = newIPs[i]
+		case dns.TypeAAAA:
+			a[i].(*dns.AAAA).AAAA = newIPs[i]
+		}
+	}
 }
