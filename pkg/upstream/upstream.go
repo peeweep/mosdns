@@ -26,10 +26,10 @@ import (
 	"github.com/IrineSistiana/mosdns/v4/pkg/dnsutils"
 	"github.com/IrineSistiana/mosdns/v4/pkg/upstream/bootstrap"
 	"github.com/IrineSistiana/mosdns/v4/pkg/upstream/doh"
-	"github.com/IrineSistiana/mosdns/v4/pkg/upstream/h3roundtripper"
 	"github.com/IrineSistiana/mosdns/v4/pkg/upstream/transport"
-	"github.com/lucas-clemente/quic-go"
 	"github.com/miekg/dns"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"io"
@@ -231,9 +231,8 @@ func NewUpstream(addr string, opt *Opt) (Upstream, error) {
 				return nil, fmt.Errorf("failed to init udp socket for quic")
 			}
 			addonCloser = conn
-			t = &h3roundtripper.H3RTHelper{
-				Logger:    opt.Logger,
-				TLSConfig: opt.TLSConfig,
+			t = &http3.RoundTripper{
+				TLSClientConfig: opt.TLSConfig,
 				QUICConfig: &quic.Config{
 					TokenStore:                     quic.NewLRUTokenStore(4, 8),
 					InitialStreamReceiveWindow:     4 * 1024,
@@ -241,12 +240,12 @@ func NewUpstream(addr string, opt *Opt) (Upstream, error) {
 					InitialConnectionReceiveWindow: 8 * 1024,
 					MaxConnectionReceiveWindow:     64 * 1024,
 				},
-				DialFunc: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 					ua, err := net.ResolveUDPAddr("udp", dialAddr) // TODO: Support bootstrap.
 					if err != nil {
 						return nil, err
 					}
-					return quic.DialEarlyContext(ctx, conn, ua, addrURL.Host, tlsCfg, cfg)
+					return quic.DialEarly(ctx, conn, ua, tlsCfg, cfg)
 				},
 			}
 		} else {
