@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all # required by push tag
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           go-version: stable
 
@@ -22,7 +22,7 @@ jobs:
         run: go test -race -v ./...
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.8'
 
@@ -32,9 +32,6 @@ jobs:
           CGO_ENABLED: '0'
 
       - name: Publish
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: './release/mosdns*.zip'
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
