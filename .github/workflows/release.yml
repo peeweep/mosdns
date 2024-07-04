@@ -9,6 +9,7 @@ jobs:
 
   build-release:
     runs-on: ubuntu-latest
+    permissions: write-all # required by push tag
     steps:
       - uses: actions/checkout@v3
 
